@@ -2,7 +2,6 @@
 
 (provide sn-list-recur sn-list-sum sn-list-map sn-list-paren-count sn-list-reverse sn-list-occur sn-list-depth bt-recur bt-sum bt-inorder)
 
-(require racket/trace)
 ;a: base value, b: list proc, c: symbol or number proc
 (define sn-list-recur
   (lambda (a b c)
@@ -11,12 +10,6 @@
                              [(list? (car ls)) (b (helper (car ls)) (helper (cdr ls)))]
                              [else (b (c (car ls)) (helper (cdr ls)))])))]
       helper)))
-(define slist-reverse
-  (lambda (a)
-    (cond [(null? a) a]
-          [(list? a) (reverse (map slist-reverse a))]
-          [else a])))
-;(trace sn-list-recur)
 
 (define sn-list-sum
   (lambda (a)
