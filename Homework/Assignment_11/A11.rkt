@@ -133,11 +133,20 @@
                       (parse-exp (3rd datum)))]
          [else (app-exp (parse-exp (1st datum))
                         (parse-exp (2nd datum)))])]
+      ;[(lambda? datum) (if (null? (3rd datum)) 'error (lambda-exp (parse-exp (2nd datum)) (parse-exp (3rd datum))))]
+      ;[(let? datum) (cond [(let? )])]
+      ;[(if? datum) '()]
+      ;[(set-exp? datum) (set-exp (2nd datum) (3rd datum))]
+      
       [else (error 'parse-exp "bad expression: ~s" datum)])))
 
 (define unparse-exp
   (lambda (exp)
-    (nyi)))
+    (cond
+      [(eqv? (car exp) 'var-exp) (cadr exp)]
+      [(eqv? (car exp) 'lit-exp) (cadr exp)]
+      [(eqv? (car exp) 'lambda-exp) (lambda (unparse-exp (cadr exp)) (unparse-exp (cadr exp)))]
+      )))
 
 ; An auxiliary procedure that could be helpful.
 (define var-exp?
