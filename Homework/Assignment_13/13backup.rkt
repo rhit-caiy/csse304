@@ -267,9 +267,9 @@
             [else (loop (cdr los) (add1 pos))]))))
 	    
 (define apply-env
-  (lambda (env sym)
+  (lambda (env sym) 
     (cases environment env 
-      [empty-env-record ()
+      [empty-env-record ()      
                         (error 'env "variable ~s not found." sym)]
       [extended-env-record (syms vals env)
                            (let ((pos (list-find-position sym syms)))
@@ -306,20 +306,31 @@
 (define top-level-eval
   (lambda (form)
     ; later we may add things that are not expressions.
-    (eval-exp form current-env)))
+    (eval-exp form init-env)))
 
 ; eval-exp is the main component of the interpreter
+
 
 (define eval-exp
   (lambda (exp env)
     (cases expression exp
       [lc-mult (args body) (closure args body env)]
-      [lc-indef (args body) (closure args body)]
+      [lc-indef (args body) (closure 'args body)]
       [let-basic (ids body)
-                 (set! current-env (extend-env (map unparse-exp (apply list (map car ids)))
-                                               (map (lambda (a) (eval-exp a env)) (apply list (map cadr ids)))
-                                               current-env))
-                 (car (reverse (map (lambda (a) (eval-exp a env)) body)))]
+                                       ;(set! env (extend-env (map unparse-exp (apply list (map car ids))) (map (lambda (a) (eval-exp a env)) (apply list (map cadr ids))) env))
+                                       ;(pretty-print env)
+                                       ;(map (lambda (a) (eval-exp a env)) body)]
+                 (let [(newenv (extend-env (map unparse-exp (apply list (map car ids))) (map unparse-exp (apply list (map cadr ids))) env))]
+                   (pretty-print newenv)
+                              ;(print newenv)
+                              ;(print "--------------------------------------------")
+                              ;(print (car body))
+                              ;(print (eval-exp (car body) newenv))
+                              (if (= (length body) 1)
+                                  (eval-exp (car body) newenv)
+                                  (map (lambda (a) (eval-exp a newenv)) body)))]
+      ;[let-basic (ids body) (eval-exp (car body) (extend-env (map unparse-exp (apply list (map car ids))) (map unparse-exp (apply list (map cadr ids))) env))]
+      
       [if-else
        (cond if-true else)
        (if (eval-exp cond env)
@@ -333,18 +344,18 @@
       [set-exp (var set-to) (set! var set-to)]
       [lit-exp (datum) datum]
       [var-exp (id)
-               (with-handlers ([exn:fail? (lambda (exn) (apply-env init-env id))]) (apply-env current-env id))]
+               (apply-env env id)]
       [app-exp (rator rands)
                (let ([proc-value (eval-exp rator env)]
                      [args (eval-rands rands env)])
-                 (apply-proc proc-value args))] ;; Need to CAR internally, but not on last iteration?
+                 (apply-proc proc-value args))]
       [else (error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 ; evaluate the list of operands, putting results into a list
 
 (define eval-rands
   (lambda (rands env)
-    (map (lambda (a) (eval-exp a current-env)) rands)))
+    (map (lambda (a) (eval-exp a env)) rands)))
 
 ;  Apply a procedure to its arguments.
 ;  At this point, we only have primitive procedures.  
@@ -360,7 +371,7 @@
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(procedure? + - * / add1 sub1 cons not = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector))
+(define *prim-proc-names* '(+ - * / add1 sub1 cons not = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? procedure? display newline))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -369,12 +380,9 @@
         *prim-proc-names*)
    (empty-env)))
 
-(define current-env
-  (empty-env
-   ))
-
-(define temp-env
-  (empty-env))
+;(define current-env
+;  (empty-env
+;   ))
 
 ; Usually an interpreter must define each 
 ; built-in procedure individually.  We are "cheating" a little bit.
@@ -382,6 +390,9 @@
 (define apply-prim-proc
   (lambda (prim-proc args)
     (case prim-proc
+      ;[(+) (+ (1st args) (2nd args))]
+      ;[(-) (- (1st args) (2nd args))]
+      ;[(*) (* (1st args) (2nd args))]
       [(+) (apply + args)]
       [(-) (apply - args)]
       [(*) (apply * args)]
@@ -430,25 +441,26 @@
       [(vector-set!) (vector-set! (1st args) (2nd args) (3rd args))]
       [(display) (apply display args)]
       [(newline) (apply newline args)]
-      [(vector) (apply vector args)]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
 
 (define apply-closure
   (lambda (args vals code env)
-    ;(print env)
-    ;(set! temp-env current-env)
-    (set! current-env (extend-env (map unparse-exp args) vals current-env))
-    (car (reverse (map (lambda (a) (eval-exp a env)) code)))))
-    ;(lambda (a) (eval-exp a current-env)) (reverse code)))
-    ;(let ([result (car (reverse (map eval-exp code)))])
-      ;(set! current-env temp-env)
-      ;result)))
-
+    (closure args code env)))
+;(define apply-closure
+;  (lambda (args vals code env)
+;    (set! temp-env current-env)
+;    (set! current-env (extend-env (map unparse-exp args) vals env))
+;    (pretty-print current-env)
+;    (pretty-print temp-env)
+;    (pretty-print env)
+;    (let ([result (map eval-exp code)])
+;      (set! current-env temp-env)
+;      result)))
 (define rep      ; "read-eval-print" loop.
-    (lambda ()
-    (display "8===D ")
+  (lambda ()
+    (display "8==D ")
     ;; notice that we don't save changes to the environment...
     (let ([answer (top-level-eval (parse-exp (read)))])
       ;; TODO: are there answers that should display differently?
@@ -456,34 +468,4 @@
       (rep))))  ; tail-recursive, so stack doesn't grow.
 
 (define eval-one-exp
-  (lambda (x)
-    (set! current-env (empty-env))
-    (top-level-eval (parse-exp x))))
-
-;(define last
-;  (lambda (lst)
-;    (cond [(null? lst) lst]
-;          ;[(= (length lst) 1) (car lst)]
-;          [else (car (reverse lst))])))
-
-;; FOR TESTING
-(define literal-code '((lambda (a b) (+ a b)) 1 2))
-(define my-exp (parse-exp literal-code))
-;(define my-closure (eval-exp my-exp))
-(define eval-this (parse-exp '(((lambda (a) (lambda (b) (+ a b))) 2) 1)))
-(define let-exp (parse-exp '(let ([a 1] [b 2]) (+ a b))))
-(define lam-lit (parse-exp '((lambda (x) x '(1 2 3)) 1)))
-(define lam-lit-2 (parse-exp '((lambda (x) x) 1)))
-
-(define uh-oh
-  (lambda (test-num)
-    (cond [(= test-num 0)
-           (eval-exp eval-this)] ;; (((lambda (a) (lambda (b) (+ a b))) 2) 1)
-          [(= test-num 1)
-           (eval-exp my-exp)] ;; ((lambda (a b) (+ a b)) 1 2)
-          [(= test-num 2)
-           (eval-exp let-exp)] ;; (let ([a 1] [b 2]) (+ a b))
-          [(= test-num 3)
-           (eval-exp lam-lit)] ;; ((lambda (x) '(1 2 3)))
-          [(= test-num 4)
-           (eval-exp lam-lit-2)])))
+  (lambda (x) (top-level-eval (parse-exp x))))

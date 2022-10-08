@@ -136,14 +136,6 @@
           [(not (null? (car a))) (and (list? (car a)) (list? (cdr a)) (andmap (lambda (b) (and (list? b) (= (length b) 2) (symbol? (car b)))) (car a)))]
           [else #t])))
 
-;(define checkletrec
-;  (lambda (a)
-;    (print a)
-;    (cond [(not (list? a)) #f]
-;          [(null? (cdr a)) #f]
-;          [(symbol? (car a)) (checklet (cdr a))]
-;          [(not (null? (car a))) (and (list? (car a)) (list? (cdr a)) (andmap (lambda (b) (and (list? b) (= (length b) 2) (symbol? (car b)))) (car a)))]
-;          [else #t])))
 
 (define parse-exp         
   (lambda (datum)
