@@ -16,7 +16,7 @@
     [(eval-one-exp ' (list (procedure? +) (not (procedure? (+ 3 4))))) '(#t #t) 2] ; (run-test primitive-procedures 1)
     [(eval-one-exp ' (list (procedure? procedure?) (procedure? (lambda(x) x)) (not (procedure? '(lambda (x) x))))) '(#t #t #t) 2] ; (run-test primitive-procedures 2)
     [(eval-one-exp ' (list (procedure? list) (procedure? map) (procedure? apply) (procedure? #t))) '(#t #t #t #f) 2] ; (run-test primitive-procedures 3)
-    [(eval-one-exp ' (map procedure? (list map car 3 (lambda(x) x) (lambda x x) ((lambda () 2))))) '(#t #t #f #t #t #f) 2] ; (run-test primitive-procedures 4)
+    [(eval-one-exp ' (map procedure? (list map car 3 (lambda (x) x) (lambda x x) ((lambda () 2))))) '(#t #t #f #t #t #f) 2] ; (run-test primitive-procedures 4)
     [(eval-one-exp '(apply list (list 3 4 5))) '(3 4 5) 2] ; (run-test primitive-procedures 5)
     [(eval-one-exp ' (list (vector? (vector 3)) (vector-ref (vector 2 4 5) (vector-ref (vector 2 4 5) 0)))) '(#t 5) 1] ; (run-test primitive-procedures 6)
     [(eval-one-exp '(length '(a b c d e))) 5 1] ; (run-test primitive-procedures 7)
