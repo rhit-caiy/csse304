@@ -54,10 +54,12 @@
    (ids list?)
    (body list?)]
   [let-rec
-   (proc-names (list-of var-exp?))
-   (idss (list-of (list-of var-exp?)))
+   (proc-names (list-of symbol?))
+   (idss (list-of (list-of symbol?)))
    (bodiess (list-of (list-of expression?)))
    (letrec-bodies (list-of expression?))]
+   ;(ids list?)
+   ;(body list?)]
   [if-else
    (cond expression?)
    (if-true expression?)
@@ -66,8 +68,11 @@
    (cond expression?)
    (if-true expression?)]
   [set-exp
-   (var symbol?)
+   (var var-exp?)
    (set-to expression?)]
+  [set!-exp
+    (id var-exp?)
+    (body expression?)]
   [app-exp
    (rator expression?)
    (rand (list-of expression?))]
@@ -93,7 +98,7 @@
   [empty-env-record]
   [extended-env-record
    (syms (list-of symbol?))
-   (vals (list-of box?))
+   (vals (list-of scheme-value?))
    (env environment?)]
   [recursively-extended-env-record
    (proc-names (list-of symbol?))
@@ -148,10 +153,6 @@
               (if (not (or (= (length datum) 3) (= (length datum) 4)))
                   (error 'parse-error "error")
                   (parse-if datum))]
-             [(eqv? (car datum) 'set!)
-              (if (not (= (length datum) 3))
-                  (error 'parse-error "invalid set expression in: ~s" datum)
-                  (set-exp (2nd datum) (parse-exp (3rd datum))))]
              [(eqv? (car datum) 'and) (and-exp (map parse-exp (cdr datum)))]
              [(eqv? (car datum) 'or) (or-exp (map parse-exp (cdr datum)))]
              [(eqv? (car datum) 'cond) (cond-exp (map parse-exp (cdr datum)))]
@@ -196,13 +197,16 @@
 
 (define parse-let
   (lambda (datum)
+    ;(print datum)
     (cond [(and (eqv? (car datum) 'let) (symbol? (2nd datum))) (let-named (parse-exp (cadr datum)) (map (lambda (b) (cons (parse-exp (car b)) (list (parse-exp (cadr b))))) (caddr datum)) (map parse-exp (cdddr datum)))]
           [(eqv? (car datum) 'let) (let-basic (map (lambda (b) (append (list (parse-exp (car b))) (list (parse-exp (cadr b))))) (cadr datum)) (map parse-exp (cddr datum)))]
           [(eqv? (car datum) 'let*) (let-star (map (lambda (b) (cons (parse-exp (car b)) (list (parse-exp (cadr b))))) (cadr datum)) (map parse-exp (cddr datum)))]
-          [(eqv? (car datum) 'letrec) (let-rec (map parse-exp (map car (cadr datum)))
-                                               (map (lambda (a) (map parse-exp a)) (map cadr (map cadr (cadr datum))))
+          ;[(eqv? (car datum) 'letrec) (let-rec (map (lambda (b) (cons (parse-exp (car b)) (list (parse-exp (cadr b))))) (cadr datum)) (map parse-exp (cddr datum)))]
+          [(eqv? (car datum) 'letrec) (let-rec (map car (cadr datum))
+                                               (map cadr (map cadr (cadr datum)))
                                                (map list (map parse-exp (map caddr (map cadr (cadr datum)))))
-                                               (map parse-exp (cddr datum)))])))
+                                               (map parse-exp (cddr datum)))]
+          )))
 
 ; Unparsing
 (define unparse-exp
@@ -215,9 +219,10 @@
       [let-basic (ids body) (unparse-let exp)]
       [let-star (ids body) (unparse-let exp)]
       [let-named (name ids body) (unparse-let exp)]
+      ;[let-rec (ids body) (unparse-let exp)]
       [if-else (a b c) (unparse-if exp)]
       [if-no-else (exp1 exp2) (unparse-if exp)]
-      [set-exp (var exp) (list 'set! var (unparse-exp exp))]
+      [set-exp (var exp) (list 'set! (unparse-exp var) (unparse-exp exp))]
       [app-exp (rator rand) (cons (unparse-exp rator) (map unparse-exp rand))]
       [else (map unparse-exp exp)]
       )))
@@ -231,6 +236,7 @@
                                                                                                                                                        (car body))))]
       [let-named (name ids body) (append (list 'let) (list (unparse-exp name)) (list (map (lambda (b) (list (unparse-exp (car b)) (unparse-exp (cadr b)))) ids)) (map unparse-exp body))]
       [let-star (ids body) (append (list 'let*) (list (map (lambda (b) (list (unparse-exp (car b)) (unparse-exp (cadr b)))) ids)) (map unparse-exp body))]
+      ;[let-rec (ids body) (append (list 'letrec) (list (map (lambda (b) (list (unparse-exp (car b)) (unparse-exp (cadr b)))) ids)) (map unparse-exp body))]
       [else '()])))
 
 (define unparse-if
@@ -244,17 +250,17 @@
 (define check
   (lambda (a)
     #t))
-;(cond [(or (symbol? a) (number? a) (string? a)) #t]
-;      [(null? a) #t]
-;      [(list? a) (cond [(eqv? (car a) 'if) (if (or (= 3 (length a)) (= 4 (length a))) #t #f)]
-;                       [(eqv? (car a) 'lambda) #t];(if (and #f (or (symbol? (cadr a)) (= 0 (length (filter-not symbol? (cadr a)))))) #t #f)]
-;                       [(eqv? (car a) 'set!) (= 3 (length a))]
-;                       [(eqv? (car a) 'let) (checklet (cdr a))]
-;                       [(eqv? (car a) 'letrec) (checklet (cdr a))]
-;                       [(eqv? (car a) 'let*) (checklet (cdr a))]
-;                       [else #t])]
-;      [(pair? a) #f])
-;))
+    ;(cond [(or (symbol? a) (number? a) (string? a)) #t]
+    ;      [(null? a) #t]
+    ;      [(list? a) (cond [(eqv? (car a) 'if) (if (or (= 3 (length a)) (= 4 (length a))) #t #f)]
+    ;                       [(eqv? (car a) 'lambda) #t];(if (and #f (or (symbol? (cadr a)) (= 0 (length (filter-not symbol? (cadr a)))))) #t #f)]
+    ;                       [(eqv? (car a) 'set!) (= 3 (length a))]
+    ;                       [(eqv? (car a) 'let) (checklet (cdr a))]
+    ;                       [(eqv? (car a) 'letrec) (checklet (cdr a))]
+    ;                       [(eqv? (car a) 'let*) (checklet (cdr a))]
+    ;                       [else #t])]
+    ;      [(pair? a) #f])
+    ;))
 
 (define checklet
   (lambda (a)
@@ -301,6 +307,11 @@
   (lambda ()
     (empty-env-record)))
 
+;(define extend-env
+;  (lambda (syms vals env)
+;    (extended-env-record syms vals env)))
+
+
 (define extend-env
   (lambda (syms vals env)
     (extended-env-record syms (_box-vals vals) env)))
@@ -335,7 +346,8 @@
                                            (closure (list-ref idss pos)
                                                     (list-ref bodiess pos)
                                                     env)
-                                           (apply-env old-env sym)))])))
+                                           (apply-env old-env sym)))]
+      )))
 
 
 ;-----------------------+
@@ -354,8 +366,10 @@
                 (s/e-letstar (cdr ids) body (1st (1st ids)) (2nd (1st ids)))]
       [let-named (name ids body)
                  (s/e-let-named name ids body)] ;; TODO: Assignment 16 (likely along with adding "define")
+      ;[let-rec (ids body)
+      ;         (s/e-letrec (cdr ids) body (1st (1st ids)) (2nd (1st ids)))] ;; ????
       [let-rec (proc-names idss bodiess letrec-bodies)
-               (s/e-letrec proc-names idss bodiess letrec-bodies)] ;; ????
+               (s/e-letrec proc-names idss bodiess letrec-bodies)]
       [cond-exp (body)
                 (s/e-cond (1st body) (cdr body))]
       [and-exp (body)
@@ -371,20 +385,62 @@
       [while-exp (test body)
                  (while-exp (syntax-expand test) (map syntax-expand body))]
       [app-exp (rator rands)
-               (app-exp (syntax-expand rator) (map syntax-expand rands))]
+                   (app-exp (syntax-expand rator) (map syntax-expand rands))]
       [if-else (test if-true else)
                (if-else (syntax-expand test) (syntax-expand if-true) (syntax-expand else))]
       [if-no-else (test if-true)
-                  (if-no-else (syntax-expand test) (syntax-expand if-true))]
+               (if-no-else (syntax-expand test) (syntax-expand if-true))]
       [else exp])))
 
+; [let-basic] (ids body)                [x] [x]
+; [let-named] (name ids body)           [N/A] [N/A]
+; [let-star] (ids body)                 [x] [x]
+; [let-rec] (ids body)                  [N/A] [N/A]
+; [cond-exp] (body)                     [x] [x]
+; [and-exp] (body)                      [x] [x]
+; [or-exp] (body)                       [x] [x]
+; [begin-exp] (body)                    [x] [x]
 ; [while-exp] (body)                    [ ] [ ]
 
 ; some procedures to syntax expand specific expression types
 (define s/e-letstar
   (lambda (ids body cur-var cur-val)
     (cond [(null? ids) (app-exp (lc-mult (list cur-var) (map syntax-expand body)) (list (syntax-expand cur-val)))]
-          [else (app-exp (lc-mult (list cur-var) (list (syntax-expand (s/e-letstar (cdr ids) (map syntax-expand body) (1st (1st ids)) (2nd (1st ids)))))) (list (syntax-expand cur-val)))])))
+          [else (app-exp (lc-mult (list cur-var) (list (s/e-letstar (cdr ids) body (1st (1st ids)) (2nd (1st ids))))) (list (syntax-expand cur-val)))])))
+
+
+
+;let basic
+;(app-exp (lc-mult (map 1st ids) (map syntax-expand body)) (map syntax-expand (map 2nd ids)))
+
+;------------------------------------------------------------------------------------------------------------------------------------------------------------------
+(define s/e-letnamed
+  (lambda (name ids body)
+    (syntax-expand (app-exp (syntax-expand (lc-mult (list name) (list (syntax-expand (let-basic ids body))))) (list (lc-mult (map car ids) body))))))
+(define s/e-let-named
+  (lambda (name ids body)
+    (syntax-expand (let-basic (list (list name (lit-exp #f))) (list (let-basic ids (cons (set-exp (unparse-exp name) (lc-mult (map 1st ids) body)) body)))))))
+(require racket/trace)
+;(trace s/e-letnamed)
+;(trace syntax-expand)
+
+;(s/e-letrec (cdr ids) body (1st (1st ids)) (2nd (1st ids)))
+;(define s/e-letrec 
+;  (lambda (proc-names idss bodiess letrec-bodies)
+;    (print (caar bodiess))
+;    (let-rec proc-names
+;                idss
+;                (list (map syntax-expand (car bodiess)))
+;                (map syntax-expand letrec-bodies))))
+    ;(lc-mult '() (list (set! cur-var cur-val) (app-exp (lc-mult (map 1st ids) (map syntax-expand body)) (map syntax-expand (map 2nd ids)))))))
+;(s/e-letrec proc-names idss (map (lambda (x) (map syntax-expand x)) bodiess) (syntax-expand letrec-bodies))))
+
+(define s/e-letrec
+  (lambda (proc-names idss bodiess letrec-bodies)
+    (syntax-expand (let-basic (map (lambda (proc-name) (list proc-name (lit-exp #f))) proc-names)
+                              (append (map (lambda (proc-name ids body) (set-exp (unparse-exp proc-name) (lc-mult ids body))) proc-names idss bodiess) letrec-bodies)))))
+
+
 
 (define s/e-cond
   (lambda (cur-exp remaining)
@@ -426,25 +482,23 @@
     (cond [(null? body) (lit-exp #f)]
           [(null? (cdr body)) (let ((a (syntax-expand (1st body)))) (if a
                                                                         a
-                                                                        (lit-exp #f)))]
+                                                                       (lit-exp #f)))]
           [else (if-else (syntax-expand (1st body)) (syntax-expand (1st body)) (s/e-or (cdr body)))])))
 
 (define s/e-begin
   (lambda (body)
     (app-exp (lc-mult '() (map syntax-expand body)) '())))
 
+
+
+(define s/e-lcnfix
+  (lambda (args body values);(parse-exp '(lambda (a b) (+ a b) 1 2)) parse into (lc-mult (list args) (list body value1 ...)), var is car of lc-mult, body is caadr, and values is cdadr
+    (lc-mult args (cons body (lasttolist values (length args))))));maybe pair length is 1? In that case, change 1 in lasttolist to 0
+
 (define lasttolist
   (lambda (values argslength)
     (cond [(= 1 argslength) (list values)]
           [else (cons (car values) (lasttolist (cdr values) (- argslength 1)))])))
-
-(define s/e-let-named
-  (lambda (name ids body)
-    (syntax-expand (let-basic (list (list name (lit-exp #f))) (list (let-basic ids (cons (set-exp (unparse-exp name) (lc-mult (map 1st ids) (map syntax-expand body))) (map syntax-expand body))))))))
-
-(define s/e-letrec
-  (lambda (proc-names idss bodiess letrec-bodies)
-    (syntax-expand (let-basic (map (lambda (proc-name) (list proc-name (lit-exp #f))) proc-names) (append (map (lambda (proc-name ids body) (set-exp (unparse-exp proc-name) (lc-mult ids (map syntax-expand body)))) proc-names idss bodiess) letrec-bodies)))))
 
 ;---------------------------------------+
 ;                                       |
@@ -485,17 +539,20 @@
        (if (eval-exp cond env)
            (eval-exp if-true env)
            (void))]
-      [set-exp (var set-to) (let ([env-box (apply-env env var)])
-                              (set-box! env-box (eval-exp set-to env)))]
+      [set-exp (var set-to) (set! var set-to)]
       [lit-exp (datum) datum]
-      [var-exp (id)
+      [var-exp (id) ;(apply-env env id)]
                (with-handlers ([exn:fail? (lambda (exn) (unbox (apply-env init-env id)))]) (unbox (apply-env env id)))]
       [app-exp (rator rands)
                (let ([proc-value (eval-exp rator env)]
                      [args (eval-rands rands env)])
-                 (apply-proc proc-value args))]
+                 (apply-proc proc-value args))] ;; Need to CAR internally, but not on last iteration?
       [while-exp (test body)
                  (apply-while test body env)]
+      [let-rec (proc-names idss bodiess letrec-bodies)
+                  (eval-exp letrec-bodies
+                               (extend-env-recursively
+                               proc-names idss bodiess env))]
       [else (error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 (define apply-while
@@ -525,11 +582,13 @@
     (cases proc-val proc-value
       [prim-proc (op) (apply-prim-proc op arg-vals)]
       [closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env))]
+      ;[lc-closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env))]
+      ; You will add other cases
       [else (error 'apply-proc
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail))
+(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector define set!))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -537,6 +596,13 @@
    (map prim-proc      
         *prim-proc-names*)
    (empty-env)))
+
+;(define current-env
+;  (empty-env
+;   ))
+
+;(define temp-env
+;  (empty-env))
 
 ; Usually an interpreter must define each 
 ; built-in procedure individually.  We are "cheating" a little bit.
@@ -555,7 +621,6 @@
       [(sub1) (- (1st args) 1)]
       [(cons) (cons (1st args) (2nd args))]
       [(not) (not (1st args))]
-      [(eqv?) (eqv? (1st args) (2nd args))]
       [(=) (= (1st args) (2nd args))]
       [(>=) (>= (1st args) (2nd args))]
       [(<=) (<= (1st args) (2nd args))]
@@ -599,12 +664,15 @@
       [(vector) (apply vector args)]
       [(map) (apply map (lambda (x) (apply-proc (1st args) (list x))) (cdr args))]
       [(apply) (apply apply-proc args)]
-      [(append) (append (1st args) (2nd args))]
-      [(list-tail) (list-tail (1st args) (2nd args))]
+      ;[(define) (define (1st args) (2nd args))]
+      ;[(set!) (set! (1st args) (2nd args))]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
 
+;(define apply-closure
+;  (lambda (args vals code env)
+;    (car (reverse (map (lambda (a) (eval-exp a (extend-env-helper (map unparse-exp args) vals env))) code)))))
 (define apply-closure
   (lambda (args vals code env)
     (let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
@@ -618,6 +686,21 @@
             (extend-env-helper (cdr args) (cdr vals) (extend-env (list (car args)) (list (car vals)) env)))
         (extend-env args vals env))))
 
+(define extend-env-recursively
+  (lambda (proc-names idss bodiess old-env)
+    (let* ([len (length proc-names)] [vec (make-vector len)] [env (extended-env-record proc-names vec old-env)])
+      (for-each
+       (lambda (pos ids bodies)
+         (vector-set! vec pos (closure ids bodies env)))
+       (iota len) idss bodiess)
+      env)))
+
+(define iota
+  (lambda (len)
+    (if (= len 0)
+        '()
+        (append (iota (- len 1)) (list (- len 1))))))
+
 (define rep      ; "read-eval-print" loop.
   (lambda ()
     (display "8===D ")
@@ -630,6 +713,12 @@
 (define eval-one-exp
   (lambda (x)
     (top-level-eval (syntax-expand (parse-exp x)))))
+
+;(define last
+;  (lambda (lst)
+;    (cond [(null? lst) lst]
+;          ;[(= (length lst) 1) (car lst)]
+;          [else (car (reverse lst))])))
 
 ;---------------------------------------+
 ;                                       |
@@ -662,18 +751,3 @@
   (parse-exp '(let ([a 1]) (let ([b 2]) (+ a b)))))
 (define nested-letstar
   (parse-exp '(let* ([a 1] [b (+ a 1)]) (and 1 1))))
-(define nested-set
-  (parse-exp '(let ([a 1]) (set! a 3) a)))
-
-; Test cases copied for debugging
-(define some-letrec
-  '(letrec ((fact (lambda (x) (if (zero? x) 1 (* x (fact (- x 1))))))) (map fact '(0 1 2 3 4 5))))
-(define some-letrec-parsed
-  (parse-exp some-letrec))
-
-
-; Eval tests
-(define eval-test
-  (lambda (parsed-test)
-    (eval-exp (syntax-expand parsed-test) init-env)))
-
