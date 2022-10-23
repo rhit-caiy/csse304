@@ -424,17 +424,13 @@
 
 (define s/e-and
   (lambda (body)
-    (cond [(null? body) (lit-exp #f)]
-          [(null? (cdr body)) (if-else (syntax-expand (1st body)) (syntax-expand (1st body)) (lit-exp #f))]  
-          [else (if-else (syntax-expand (1st body)) (s/e-and (cdr body)) (lit-exp #f))])))
+    (cond [(null? body) (lit-exp #t)]
+          [else (syntax-expand (let-basic (list (list (parse-exp 'a) (syntax-expand (1st body)))) (list (if-else (parse-exp 'a) (s/e-and (cdr body)) (lit-exp #f)))))])))
 
 (define s/e-or
   (lambda (body)
     (cond [(null? body) (lit-exp #f)]
-          [(null? (cdr body)) (let ((a (syntax-expand (1st body)))) (if a
-                                                                        a
-                                                                        (lit-exp #f)))]
-          [else (if-else (syntax-expand (1st body)) (syntax-expand (1st body)) (s/e-or (cdr body)))])))
+          [else (syntax-expand (let-basic (list (list (parse-exp 'a) (syntax-expand (1st body)))) (list (if-else (parse-exp 'a) (parse-exp 'a) (s/e-or (cdr body))))))])))
 
 (define s/e-begin
   (lambda (body)
@@ -493,8 +489,11 @@
        (if (eval-exp cond env)
            (eval-exp if-true env)
            (void))]
-      [set-exp (var set-to) (let ([env-box (apply-env env var)])
-                              (set-box! env-box (eval-exp set-to env)))]
+      [set-exp (var set-to)
+               (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
+                   (set-box! env-box (eval-exp set-to env))))])
+                 (let ([env-box (apply-env env var)])
+                   (set-box! env-box (eval-exp set-to env))))]
       [lit-exp (datum) datum]
       [var-exp (id)
                (with-handlers ([exn:fail? (lambda (exn) (unbox (apply-env global-env id)))]) (unbox (apply-env env id)))]
@@ -538,7 +537,7 @@
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail))
+(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -551,8 +550,6 @@
 (define global-env init-env)
 (define extend-global-env
   (lambda (var val)
-    ;(print var)
-    ;(print val)
     (set! global-env (extend-env (list var) (list val) global-env))))
 (define reset-global-env
   (lambda () (set! global-env init-env)))
@@ -620,6 +617,7 @@
       [(apply) (apply apply-proc args)]
       [(append) (append (1st args) (2nd args))]
       [(list-tail) (list-tail (1st args) (2nd args))]
+      [(print) (print (1st args))]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
