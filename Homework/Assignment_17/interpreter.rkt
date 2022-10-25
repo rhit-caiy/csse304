@@ -328,7 +328,8 @@
   (lambda (env sym)
     (cases environment env 
       [empty-env-record ()
-                        (error 'env "variable ~s not found." sym)]
+                        (raise 'missing-var)]
+                        ;(error 'env "variable ~s not found." sym)]
       [extended-env-record (syms vals env)
                            (let ((pos (list-find-position sym syms)))
                              (if (number? pos)
@@ -537,7 +538,7 @@
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print))
+(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print void))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -618,6 +619,7 @@
       [(append) (append (1st args) (2nd args))]
       [(list-tail) (list-tail (1st args) (2nd args))]
       [(print) (print (1st args))]
+      [(void) (void)]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
