@@ -115,7 +115,8 @@
   [closure
    (args (list-of var-exp?))
    (code lambda-body?)
-   (env environment?)])
+   (env environment?)]
+  [k-proc (k continuation?)])
   
 ;-------------------+
 ;                   |
@@ -180,7 +181,6 @@
 ; Additional subtype parsing
 (define parse-lambda
   (lambda (datum)
-    ;(print datum)
     (if (list? (2nd datum))
         (lc-mult (map parse-exp (2nd datum)) (map parse-exp (cddr datum)))
         (if (pair? (2nd datum))
@@ -457,7 +457,25 @@
 ;---------------------------------------+
 
 ; To be added in assignment 18a.
+(define-datatype continuation continuation?
+  (init-k)
+  (rator-k (rands (list-of expression?))
+           (env environment?)
+           (k continuation?))
+  (rands-k (proc-value scheme-value?)
+           (k continuation?))
+  )
 
+
+(define apply-k
+  (lambda (k val)
+    (cases continuation k
+      [init-k () val]
+      [rator-k (rands env k)
+               (eval-rands rands env (rands-k val k))]
+      [rands-k (proc-value k)
+               (apply-proc proc-value val k)]
+      [else (k val)])))
 
 ;-------------------+
 ;                   |
@@ -470,75 +488,76 @@
 (define top-level-eval
   (lambda (form)
     ; later we may add things that are not expressions.
-    (eval-exp form global-env)))
+    (eval-exp form global-env (init-k))))
 
 
 ; eval-exp is the main component of the interpreter
 
 (define eval-exp
-  (lambda (exp env)
+  (lambda (exp env k)
     (cases expression exp
-      [lc-mult (args body) (closure args body env)]
-      [lc-indef (arg body) (closure (list arg) body env)]
+      [lc-mult (args body) (apply-k k (closure args body env))]
+      [lc-indef (arg body) (apply-k k (closure (list arg) body env))]
       [if-else
        (cond if-true else)
-       (if (eval-exp cond env)
-           (eval-exp if-true env)
-           (eval-exp else env))]
+       (apply-k k (if (eval-exp cond env k)
+           (eval-exp if-true env k)
+           (eval-exp else env k)))]
       [if-no-else
        (cond if-true)
-       (if (eval-exp cond env)
-           (eval-exp if-true env)
-           (void))]
+       (apply-k k (if (eval-exp cond env k)
+           (eval-exp if-true env k)
+           (void)))]
       [set-exp (var set-to)
                (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
-                   (set-box! env-box (eval-exp set-to env))))])
+                   (set-box! env-box (eval-exp set-to env k))))])
                  (let ([env-box (apply-env env var)])
-                   (set-box! env-box (eval-exp set-to env))))]
-      [lit-exp (datum) datum]
+                   (set-box! env-box (eval-exp set-to env k))))]
+      [lit-exp (datum) (apply-k k datum)]
       [var-exp (id)
                (with-handlers ([exn:fail? (lambda (exn) (unbox (apply-env global-env id)))]) (unbox (apply-env env id)))]
       [app-exp (rator rands)
-               (let ([proc-value (eval-exp rator env)]
-                     [args (eval-rands rands env)])
-                 (apply-proc proc-value args))]
+               (let ([proc-value (eval-exp rator env k)]
+                     [args (eval-rands rands env k)])
+                 (apply-proc proc-value args k))]
       [while-exp (test body)
-                 (apply-while test body env)]
-      [define-exp (id body) (extend-global-env id (eval-exp body env))]
+                 (apply-while test body env k)]
+      [define-exp (id body) (extend-global-env id (eval-exp body env k))]
       [else (error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 (define apply-while
-  (lambda (test body env)
-    (if (eval-exp test env)
-        (apply-while-hlp test body env (map (lambda (a) (eval-exp a env)) body))
+  (lambda (test body env k)
+    (if (eval-exp test env k)
+        (apply-while-hlp test body env (map (lambda (a) (eval-exp a env k)) body) k)
         (void))))
 
 (define apply-while-hlp
-  (lambda (test body env prev)
-    (if (eval-exp test env)        
-        (apply-while-hlp test body env (map (lambda (a) (eval-exp a env)) body))
+  (lambda (test body env prev k)
+    (if (eval-exp test env k)        
+        (apply-while-hlp test body env (map (lambda (a) (eval-exp a env k)) body) k)
         prev)))
 
 ; evaluate the list of operands, putting results into a list
 
 (define eval-rands
-  (lambda (rands env)
-    (map (lambda (a) (eval-exp a env)) rands)))
+  (lambda (rands env k)
+    (map (lambda (a) (eval-exp a env k)) rands)))
 
 ;  Apply a procedure to its arguments.
 ;  At this point, we only have primitive procedures.  
 ;  User-defined procedures will be added later.
 
 (define apply-proc
-  (lambda (proc-value arg-vals)
+  (lambda (proc-value arg-vals k)
     (cases proc-val proc-value
-      [prim-proc (op) (apply-prim-proc op arg-vals)]
-      [closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env))]
+      [prim-proc (op) (apply-prim-proc op arg-vals k)]
+      [closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env) k)]
+      [k-proc (k) (apply-k k (car arg-vals))]
       [else (error 'apply-proc
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print void))
+(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print void call/cc))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -559,75 +578,76 @@
 ; built-in procedure individually.  We are "cheating" a little bit.
 
 (define apply-prim-proc
-  (lambda (prim-proc args)
+  (lambda (prim-proc args k)
     (case prim-proc
-      [(+) (apply + args)]
-      [(-) (apply - args)]
-      [(*) (apply * args)]
-      [(/) (apply / args)]
-      [(quotient) (quotient (1st args) (2nd args))]
-      [(positive?) (positive? (1st args))]
-      [(negative?) (negative? (1st args))]
-      [(add1) (+ (1st args) 1)]
-      [(sub1) (- (1st args) 1)]
-      [(cons) (cons (1st args) (2nd args))]
-      [(not) (not (1st args))]
-      [(=) (= (1st args) (2nd args))]
-      [(>=) (>= (1st args) (2nd args))]
-      [(<=) (<= (1st args) (2nd args))]
-      [(>) (> (1st args) (2nd args))]
-      [(<) (< (1st args) (2nd args))]
-      [(car) (car (1st args))]
-      [(cdr) (cdr (1st args))]
-      [(caar) (caar (1st args))]
-      [(cadr) (cadr (1st args))]
-      [(cdar) (cdar (1st args))]
-      [(cddr) (cddr (1st args))]
-      [(caaar) (caaar (1st args))]
-      [(caadr) (caadr (1st args))]
-      [(cadar) (cadar (1st args))]
-      [(caddr) (caddr (1st args))]
-      [(cdaar) (cdaar (1st args))]
-      [(cdadr) (cdadr (1st args))]
-      [(cddar) (cddar (1st args))]
-      [(cdddr) (cdddr (1st args))]
-      [(list) (apply list args)]
-      [(null?) (null? (1st args))]
-      [(eq?) (eq? (1st args) (2nd args))]
-      [(eqv?) (eqv? (1st args) (2nd args))]
-      [(equal?) (equal? (1st args) (2nd args))]
-      [(length) (length (1st args))]
-      [(list?) (list? (1st args))]
-      [(pair?) (pair? (1st args))]
-      [(vector?) (vector? (1st args))]
-      [(number?) (number? (1st args))]
-      [(symbol?) (symbol? (1st args))]
-      [(zero?) (zero? (1st args))]
-      ;[(atom?) (atom? (1st args))]
-      [(assq) (assq (1st args) (2nd args))]
-      [(procedure?) (proc-val? (1st args))]
-      [(list->vector) (list->vector (1st args))]
-      [(vector->list) (vector->list (1st args))]
-      [(make-vector) (make-vector (1st args))]
-      [(vector-ref) (vector-ref (1st args) (2nd args))]
-      [(vector-set!) (vector-set! (1st args) (2nd args) (3rd args))]
-      [(display) (apply display args)]
-      [(newline) (apply newline args)]
-      [(vector) (apply vector args)]
-      [(map) (apply map (lambda (x) (apply-proc (1st args) (list x))) (cdr args))]
-      [(apply) (apply apply-proc args)]
-      [(append) (append (1st args) (2nd args))]
-      [(list-tail) (list-tail (1st args) (2nd args))]
-      [(print) (print (1st args))]
-      [(void) (void)]
+      [(+) (apply-k k (apply + args))]
+      [(-) (apply-k k (apply - args))]
+      [(*) (apply-k k (apply * args))]
+      [(/) (apply-k k (apply / args))]
+      [(quotient) (apply-k k (quotient (1st args) (2nd args)))]
+      [(positive?) (apply-k k (positive? (1st args)))]
+      [(negative?) (apply-k k (negative? (1st args)))]
+      [(add1) (apply-k k (+ (1st args) 1))]
+      [(sub1) (apply-k k (- (1st args) 1))]
+      [(cons) (apply-k k (cons (1st args) (2nd args)))]
+      [(not) (apply-k k (not (1st args)))]
+      [(=) (apply-k k (= (1st args) (2nd args)))]
+      [(>=) (apply-k k (>= (1st args) (2nd args)))]
+      [(<=) (apply-k k (<= (1st args) (2nd args)))]
+      [(>) (apply-k k (> (1st args) (2nd args)))]
+      [(<) (apply-k k (< (1st args) (2nd args)))]
+      [(car) (apply-k k (car (1st args)))]
+      [(cdr) (apply-k k (cdr (1st args)))]
+      [(caar) (apply-k k (caar (1st args)))]
+      [(cadr) (apply-k k (cadr (1st args)))]
+      [(cdar) (apply-k k (cdar (1st args)))]
+      [(cddr) (apply-k k (cddr (1st args)))]
+      [(caaar) (apply-k k (caaar (1st args)))]
+      [(caadr) (apply-k k (caadr (1st args)))]
+      [(cadar) (apply-k k (cadar (1st args)))]
+      [(caddr) (apply-k k (caddr (1st args)))]
+      [(cdaar) (apply-k k (cdaar (1st args)))]
+      [(cdadr) (apply-k k (cdadr (1st args)))]
+      [(cddar) (apply-k k (cddar (1st args)))]
+      [(cdddr) (apply-k k (cdddr (1st args)))]
+      [(list) (apply-k k (apply list args))]
+      [(null?) (apply-k k (null? (1st args)))]
+      [(eq?) (apply-k k (eq? (1st args) (2nd args)))]
+      [(eqv?) (apply-k k (eqv? (1st args) (2nd args)))]
+      [(equal?) (apply-k k (equal? (1st args) (2nd args)))]
+      [(length) (apply-k k (length (1st args)))]
+      [(list?) (apply-k k (list? (1st args)))]
+      [(pair?) (apply-k k (pair? (1st args)))]
+      [(vector?) (apply-k k (vector? (1st args)))]
+      [(number?) (apply-k k (number? (1st args)))]
+      [(symbol?) (apply-k k (symbol? (1st args)))]
+      [(zero?) (apply-k k (zero? (1st args)))]
+      ;[(atom?) (apply-k k (atom? (1st args)))]
+      [(assq) (apply-k k (assq (1st args) (2nd args)))]
+      [(procedure?) (apply-k k (proc-val? (1st args)))]
+      [(list->vector) (apply-k k (list->vector (1st args)))]
+      [(vector->list) (apply-k k (vector->list (1st args)))]
+      [(make-vector) (apply-k k (make-vector (1st args)))]
+      [(vector-ref) (apply-k k (vector-ref (1st args) (2nd args)))]
+      [(vector-set!) (apply-k k (vector-set! (1st args) (2nd args) (3rd args)))]
+      [(display) (apply-k k (apply display args))]
+      [(newline) (apply-k k (apply newline args))]
+      [(vector) (apply-k k (apply vector args))]
+      [(map) (apply-k k (apply map (lambda (x) (apply-proc (1st args) (list x) k)) (cdr args)))]
+      [(apply) (apply-k k (apply apply-proc args))]
+      [(append) (apply-k k (append (1st args) (2nd args)))]
+      [(list-tail) (apply-k k (list-tail (1st args) (2nd args)))]
+      [(print) (apply-k k (print (1st args)))]
+      [(void) (apply-k k (void))]
+      [(call/cc) (apply-proc (1st args) (list (k-proc k)) k)]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
 
 (define apply-closure
-  (lambda (args vals code env)
+  (lambda (args vals code env k)
     (let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
-      (car (reverse (map (lambda (a) (eval-exp a new-env)) code))))))
+      (car (reverse (map (lambda (a) (eval-exp a new-env k)) code))))))
 
 (define extend-env-helper
   (lambda (args vals env)
