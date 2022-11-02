@@ -315,6 +315,7 @@
     (let hlp ([vals vals]
               [ret '()])
       (cond [(null? vals) (reverse ret)]
+            [(not (list? vals)) (cons (box vals) ret)]
             [else (hlp (cdr vals) (cons (box (car vals)) ret))]))))
 
 (define list-find-position
@@ -386,7 +387,6 @@
                   (define-exp id (syntax-expand body))]
       [else exp])))
 
-; [while-exp] (body)                    [ ] [ ]
 
 ; some procedures to syntax expand specific expression types
 (define s/e-letstar
@@ -459,11 +459,31 @@
 ; To be added in assignment 18a.
 (define-datatype continuation continuation?
   (init-k)
-  (rator-k (rands (list-of expression?))
+  [if-else-k (then-exp expression?)
+             (else-exp expression?)
+             (env environment?)
+             (k continuation?)]
+  [if-no-else-k (then-exp expression?)
+                (env environment?)
+                (k continuation?)]
+  [rator-k (rands (list-of expression?))
            (env environment?)
-           (k continuation?))
-  (rands-k (proc-value scheme-value?)
-           (k continuation?))
+           (k continuation?)]
+  [rands-k (proc-value scheme-value?)
+           (k continuation?)]
+  [rands-recur (rands (list-of expression?))
+               (eval-d list?)
+               (env environment?)
+               (k continuation?)]
+  [set-k (id symbol?)
+         (body expression?)
+         (env environment?)
+         (k continuation?)]
+  [define-k (id symbol?)
+    (body expression?)
+    (env environment?)
+    (k continuation?)]
+  [map-k (proc procedure?)]
   )
 
 
@@ -471,11 +491,28 @@
   (lambda (k val)
     (cases continuation k
       [init-k () val]
+      [if-else-k (then-exp else-exp env k)
+                 (if val
+                     (eval-exp then-exp env k)
+                     (eval-exp else-exp env k))]
+      [if-no-else-k (then-exp env k)
+                    (if val
+                        (eval-exp then-exp env k)
+                        (void))]
       [rator-k (rands env k)
                (eval-rands rands env (rands-k val k))]
-      [rands-k (proc-value k)
-               (apply-proc proc-value val k)]
-      [else (k val)])))
+      [rands-k (proc k)
+               (apply-proc proc val k)]
+      [rands-recur (rands eval-d env k)
+                   (cond [(null? rands) (apply-k k (reverse (cons val eval-d)))]
+                         [else (eval-exp (car rands) env (rands-recur (cdr rands) (cons val eval-d) env k))])]
+      [set-k (var set-to env k) (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
+                   (set-box! env-box (eval-exp set-to env k))))])
+                 (let ([env-box (apply-env env var)])
+                   (set-box! env-box (eval-exp set-to env k))))]
+      [define-k (id body env k) (extend-global-env id (eval-exp body env k))]
+      [map-k (proc) (proc val)]
+      [else val])))
 
 ;-------------------+
 ;                   |
@@ -492,38 +529,48 @@
 
 
 ; eval-exp is the main component of the interpreter
+(require racket/trace)
+
 
 (define eval-exp
   (lambda (exp env k)
     (cases expression exp
       [lc-mult (args body) (apply-k k (closure args body env))]
       [lc-indef (arg body) (apply-k k (closure (list arg) body env))]
-      [if-else
-       (cond if-true else)
-       (apply-k k (if (eval-exp cond env k)
-           (eval-exp if-true env k)
-           (eval-exp else env k)))]
-      [if-no-else
-       (cond if-true)
-       (apply-k k (if (eval-exp cond env k)
-           (eval-exp if-true env k)
-           (void)))]
+      [if-else (cond if-true else)
+               ;       (apply-k k (if (eval-exp cond env k)
+               ;            (eval-exp if-true env k)
+               ;             (eval-exp else env k)))]
+               (eval-exp cond env (if-else-k if-true else env k))]
+      [if-no-else (cond if-true)
+                  ;(if (eval-exp cond env k)
+                  ;    (eval-exp if-true env k)
+                  ;    (void))]
+                  (eval-exp cond env (if-no-else-k if-true env k))]
       [set-exp (var set-to)
+               ;(extend-global-env var (eval-exp set-to env k))]
+               ;(set-k var set-to env k)]
                (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
-                   (set-box! env-box (eval-exp set-to env k))))])
+                   (set-box! env-box (eval-exp set-to env (init-k)))))])
                  (let ([env-box (apply-env env var)])
-                   (set-box! env-box (eval-exp set-to env k))))]
+                   (set-box! env-box (eval-exp set-to env (init-k)))))]
       [lit-exp (datum) (apply-k k datum)]
       [var-exp (id)
-               (with-handlers ([exn:fail? (lambda (exn) (unbox (apply-env global-env id)))]) (unbox (apply-env env id)))]
+               ;(apply-k k (unbox (apply-env env id)))]
+               (with-handlers ([exn:fail? (lambda (exn) (apply-k k (unbox (apply-env global-env id))))]) (apply-k k (unbox (apply-env env id))))]
       [app-exp (rator rands)
-               (let ([proc-value (eval-exp rator env k)]
-                     [args (eval-rands rands env k)])
-                 (apply-proc proc-value args k))]
+               (eval-exp rator env (rator-k rands env k))]
+               ;(let ([proc-value (eval-exp rator env k)]
+               ;      [args (eval-rands rands env k)])
+               ;  (apply-proc proc-value args k))]
       [while-exp (test body)
                  (apply-while test body env k)]
-      [define-exp (id body) (extend-global-env id (eval-exp body env k))]
+      [define-exp (id body)
+        ;(define-k id body env k)]
+        (extend-global-env id (eval-exp body env k))]
       [else (error 'eval-exp "Bad abstract syntax: ~a" exp)])))
+
+;(trace eval-exp)
 
 (define apply-while
   (lambda (test body env k)
@@ -541,7 +588,12 @@
 
 (define eval-rands
   (lambda (rands env k)
-    (map (lambda (a) (eval-exp a env k)) rands)))
+    ;(print 'eval-rands:)
+    ;(print rands)
+    ;(map (lambda (a) (eval-exp a env k)) rands)))
+    (if (null? rands)
+        (apply-k k rands)
+        (eval-exp (car rands) env (rands-recur (cdr rands) '() env k)))))
 
 ;  Apply a procedure to its arguments.
 ;  At this point, we only have primitive procedures.  
@@ -549,6 +601,7 @@
 
 (define apply-proc
   (lambda (proc-value arg-vals k)
+    ;(print arg-vals);---------------------------------------------------------------------------------------------------------------
     (cases proc-val proc-value
       [prim-proc (op) (apply-prim-proc op arg-vals k)]
       [closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env) k)]
@@ -633,8 +686,8 @@
       [(display) (apply-k k (apply display args))]
       [(newline) (apply-k k (apply newline args))]
       [(vector) (apply-k k (apply vector args))]
-      [(map) (apply-k k (apply map (lambda (x) (apply-proc (1st args) (list x) k)) (cdr args)))]
-      [(apply) (apply-k k (apply apply-proc args))]
+      [(map) (map-cps args k)];(apply map (lambda (x) (apply-proc (1st args) (list x) k)) (cdr args))];(map-cps (1st args) (map list (2nd args)) k)];
+      [(apply) (apply-k k (apply apply-proc (append args (list (init-k)))))]
       [(append) (apply-k k (append (1st args) (2nd args)))]
       [(list-tail) (apply-k k (list-tail (1st args) (2nd args)))]
       [(print) (apply-k k (print (1st args)))]
@@ -643,6 +696,20 @@
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
+
+(define map-cps
+  (lambda (args k)
+    (apply map (lambda (x) (apply-proc (1st args) (list x) k)) (cdr args))))
+
+
+;(define map-cps
+;  (lambda (proc args k)
+;    (if (null? args)
+;        (apply-k k '())
+;         (map-cps proc (cdr args)
+;                         (map-k (lambda (a) (proc (car args)
+;                                                  (map-k (lambda (b) (apply-k k (cons b a)))))))))))
+
 
 (define apply-closure
   (lambda (args vals code env k)
@@ -715,4 +782,53 @@
 (define eval-test
   (lambda (parsed-test)
     (eval-exp (syntax-expand parsed-test) init-env)))
+
+
+
+
+; Simple CPS Tests
+(define cps-lc-mult
+  (lambda ()
+    (eval-one-exp '(lambda (a b) (+ a b) (- a b))))) ;-1
+
+(define cps-apply-closure
+  (lambda ()
+    (eval-one-exp '((lambda (a b) (+ a ((lambda (c) c) b))) 1 2)))) ;3
+
+(define cps-if
+  (lambda ()
+    (eval-one-exp '(if (= 1 0) #t #f)))) ;#f
+
+(define cps-lit
+  (lambda ()
+    (eval-one-exp '(1 2 3)))) ;'(1 2 3)
+
+(define cps-define
+  (lambda ()
+    (eval-one-exp '(define a 1))
+    (eval-one-exp 'a)
+    (reset-global-env))) ;1
+
+(define cps-set
+  (lambda ()
+    (eval-one-exp '(define a 1))
+    (eval-one-exp 'a)
+    (eval-one-exp '(set! a 3))
+    (eval-one-exp 'a)
+    (reset-global-env))) ;13
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
