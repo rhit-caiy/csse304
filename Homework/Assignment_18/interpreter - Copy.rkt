@@ -710,7 +710,7 @@
     (if (null? (cdr code))
     ;    (eval-exp (car code) env k)
     ;    (apply-closure (cdr code) env (eval-k (car code) env k)))))
-        (eval-exp (car code) env k)
+        (apply-k k (eval-exp (car code) env k))
         (begin (eval-exp (car code) env k) (apply-closure (cdr code) env k)))))
     ;(car (reverse (map (lambda (a) (eval-exp a env k)) code)))))
     ;(let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
