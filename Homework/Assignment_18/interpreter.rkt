@@ -222,9 +222,10 @@
       [let-named (name ids body) (unparse-let exp)]
       [if-else (a b c) (unparse-if exp)]
       [if-no-else (exp1 exp2) (unparse-if exp)]
-      [set-exp (var exp) (list 'set! var (unparse-exp exp))]
       [app-exp (rator rand) (cons (unparse-exp rator) (map unparse-exp rand))]
-      [while-exp (test body) (cons 'while (cons (unparse-exp test) (unparse-exp body)))]
+      [while-exp (test body) (cons 'while (cons (unparse-exp test) (map unparse-exp body)))]
+      [define-exp (var val) (cons 'define (list var (unparse-exp val)))]
+      [set-exp (var val) (cons 'set! (list var (unparse-exp val)))]
       [else (map unparse-exp exp)]
       )))
 
@@ -476,14 +477,16 @@
                (eval-d list?)
                (env environment?)
                (k continuation?)]
-  [set-k (id symbol?)
+  [set-k (id scheme-value?)
          (body expression?)
          (env environment?)
          (k continuation?)]
   [define-k (id symbol?)
-    (body expression?)
-    (env environment?)
-    (k continuation?)]
+    (body continuation?)]
+    ;(env environment?)
+    ;(k continuation?)]
+  [box-k (var box?)
+         (k continuation?)]
   [map-k (proc procedure?)]
   [eval-k (exp expression?)
           (env environment?)
@@ -514,13 +517,18 @@
                    (cond [(null? rands) (apply-k k (reverse (cons val eval-d)))]
                          [else (eval-exp (car rands) env (rands-recur (cdr rands) (cons val eval-d) env k))])]
       [set-k (var set-to env k)
+             (eval-exp set-to env (box-k val k))]
+      
+             ;(set! env (extend-env var set-to env))]
+             ;(apply-k k (extend-env var set-to env))]
              ;(set-box! (apply-env env var) (eval-exp set-to env k))]
-             (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
-                                                        (set-box! env-box (eval-exp set-to env k))))])
-               (let ([env-box (apply-env env var)])
-                 (set-box! env-box (eval-exp set-to env k))))]
-       
-      [define-k (id body env k) (extend-global-env id (eval-exp body env k))]
+             ;(with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
+             ;                                           (set-box! env-box (eval-exp set-to env k))))])
+             ;  (let ([env-box (apply-env env var)])
+             ;    (set-box! env-box (eval-exp set-to env k))))]
+      [box-k (b k) (apply-k k (set-box! b val))]
+      
+      [define-k (id body) (apply-k k (extend-global-env id val))];(set! global-env (cons (list id (box val)) global-env)))]
       [map-k (proc) (proc val)]
       [eval-k (exp env k) (eval-exp exp env k)]
       [closure-k (code env k) (apply-closure code env k)]
@@ -552,13 +560,18 @@
       [if-no-else (cond if-true)
                   (eval-exp cond env (if-no-else-k if-true env k))]
       [set-exp (var set-to)
-               ;(set-k var set-to env k)]
-               (with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
-                   (set-box! env-box (eval-exp set-to env (init-k)))))])
-                 (let ([env-box (apply-env env var)])
-                   (set-box! env-box (eval-exp set-to env (init-k)))))]
-               ;(apply-k (set-k var set-to env k)
-               ;(apply-env env var))]
+               (with-handlers ([exn:fail? (lambda (exn) (apply-k (set-k var set-to global-env k) (apply-env global-env var)))])
+                                                          (apply-k (set-k var set-to env k) (apply-env env var)))]
+               
+               ;(with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
+               ;    (set-box! env-box (eval-exp set-to env (init-k)))))])
+               ;  (let ([env-box (apply-env env var)])
+               ;    (set-box! env-box (eval-exp set-to env (init-k)))))]
+               
+               ;(with-handlers ([exn:fail? (lambda (exn) (set-box! (apply-env global-env var) (eval-exp set-to global-env (init-k))))])
+               ;  (set-box! (apply-env env var) (eval-exp set-to env (init-k))))]
+               
+               ;(extend-global-env var set-to)]
       
       [lit-exp (datum) (apply-k k datum)]
       [var-exp (id)
@@ -569,8 +582,9 @@
       [while-exp (test body)
                  (apply-while test body env k)]
       [define-exp (id body)
-        ;(define-k id body env k)]
+        ;(apply-k k (define-k id body))]
         (extend-global-env id (eval-exp body env k))]
+        ;(eval-exp body env (define-k id k))]
       [else (error 'eval-exp "Bad abstract syntax: ~a" exp)])))
 
 
@@ -603,7 +617,6 @@
     (cases proc-val proc-value
       [prim-proc (op) (apply-prim-proc op arg-vals k)]
       [closure (args code env) (apply-closure code (extend-env (map unparse-exp args) arg-vals env) k)]
-      ;[closure (args code env) (apply-closure code (extend-env (map unparse-exp args) arg-vals env) k)]
       [k-proc (k) (apply-k k (car arg-vals))]
       [else (error 'apply-proc
                    "Attempt to apply bad procedure: ~s" 
@@ -707,11 +720,18 @@
 
 (define apply-closure
   (lambda (code env k)
+    ;(with-handlers ([exn:fail? (lambda (exn) (let ([env-box (apply-env global-env var)])
+             ;                                           (set-box! env-box (eval-exp set-to env k))))])
+    (with-handlers ((exn:fail? (lambda (exn) (car (reverse (map (lambda (a) (eval-exp a env k)) code))))))
     (if (null? (cdr code))
     ;    (eval-exp (car code) env k)
     ;    (apply-closure (cdr code) env (eval-k (car code) env k)))))
+        
+    ;    (eval-exp (car code) env k)
+    ;    (begin (eval-exp (car code) env k) (apply-closure (cdr code) env k)))))
         (eval-exp (car code) env k)
-        (begin (eval-exp (car code) env k) (apply-closure (cdr code) env k)))))
+        (eval-exp (car code) env (closure-k (cdr code) env k))))))
+        
     ;(car (reverse (map (lambda (a) (eval-exp a env k)) code)))))
     ;(let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
     ;  (car (reverse (map (lambda (a) (eval-exp a new-env k)) code))))))
@@ -824,9 +844,9 @@
 
 
 (define e eval-one-exp)
-
-
-
+(define u
+  (lambda (a)
+    (unparse-exp (syntax-expand (parse-exp a)))))
 
 
 

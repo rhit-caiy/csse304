@@ -29,7 +29,7 @@
     [(begin (eval-one-exp '(define break-out-of-map #f)) (eval-one-exp '(set! break-out-of-map (call/cc (lambda (k) (lambda (x) (if (= x 7) (k 1000) (+ x 4))))))) (eval-one-exp '(map break-out-of-map '(1 3 5 7 9 11))) (eval-one-exp 'break-out-of-map)) 1000 12] ; (run-test complex-call/cc 2)
     [(begin (eval-one-exp '(define jump-into-map #f)) (eval-one-exp '(define do-the-map (lambda (x) (map (lambda (v) (if (= v 7) (call/cc (lambda (k) (set! jump-into-map k) 100)) (+ 3 v))) x)))) (eval-one-exp '(do-the-map '(3 4 5 6 7 8 9 10)))) '(6 7 8 9 100 11 12 13) 12] ; (run-test complex-call/cc 3)
     [(begin (eval-one-exp '(define jump-into-map #f)) (eval-one-exp '(define do-the-map (lambda (x) (map (lambda (v) (if (= v 7) (call/cc (lambda (k) (set! jump-into-map k) 100)) (+ 3 v))) x)))) (eval-one-exp '(list (do-the-map '(3 4 5 6 7 8 9 10)))) (eval-one-exp '(jump-into-map 987654321))) '((6 7 8 9 987654321 11 12 13)) 10] ; (run-test complex-call/cc 4)
-    ;[(eval-one-exp '(let ((y (call/cc (call/cc (call/cc call/cc))))) (y list) (y 4))) '(4) 10] ; (run-test complex-call/cc 5)
+    [(eval-one-exp '(let ((y (call/cc (call/cc (call/cc call/cc))))) (y list) (y 4))) '(4) 10] ; (run-test complex-call/cc 5)
     [(eval-one-exp '(+ 4 (apply call/cc (list (lambda (k) (* 2 (k 5))))))) 9 8] ; (run-test complex-call/cc 6)
     [(eval-one-exp '(letrec ((a (lambda (x) (+ 12 (call/cc (lambda (k) (if (k x) 7 (a (- x 3))))))))) (+ 6 (a 7)))) 25 6] ; (run-test complex-call/cc 7)
     [(eval-one-exp '(map (call/cc (lambda (k) (lambda (v) (if (= v 1) (k add1) (+ 4 v))))) '( 2 1 4 1 4))) '(3 2 5 2 5) 8] ; (run-test complex-call/cc 8)
