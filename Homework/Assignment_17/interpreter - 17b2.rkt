@@ -43,9 +43,6 @@
   [lc-indef
    (arg var-exp?)
    (body lambda-body?)]
-  [lc-ref
-   (args list?)
-   (body lambda-body?)]
   [let-basic
    (ids list?)
    (body list?)]
@@ -99,7 +96,7 @@
 (define-datatype environment environment?
   [empty-env-record]
   [extended-env-record
-   (syms list?)
+   (syms (list-of symbol?))
    (vals (list-of box?))
    (env environment?)]
   [recursively-extended-env-record
@@ -117,10 +114,6 @@
    (name symbol?)]
   [closure
    (args (list-of var-exp?))
-   (code lambda-body?)
-   (env environment?)]
-  [closure-ref
-   (args list?)
    (code lambda-body?)
    (env environment?)])
   
@@ -187,10 +180,9 @@
 ; Additional subtype parsing
 (define parse-lambda
   (lambda (datum)
+    ;(print datum)
     (if (list? (2nd datum))
-        (if (member 'ref (flatten (2nd datum)))
-            (lc-ref (map (lambda (x) (if (list? x) (parse-exp (2nd x)) (parse-exp x))) (2nd datum)) (map parse-exp (cddr datum)))
-            (lc-mult (map parse-exp (2nd datum)) (map parse-exp (cddr datum))))
+        (lc-mult (map parse-exp (2nd datum)) (map parse-exp (cddr datum)))
         (if (pair? (2nd datum))
             (parse-lambda (cons 'lambda (cons (pairtolist (2nd datum)) (cddr datum))))
             (lc-indef (parse-exp (2nd datum)) (map parse-exp (cddr datum)))))))
@@ -225,7 +217,6 @@
       [lit-exp (data) data]
       [lc-mult (exp1 exp2) (cons 'lambda (cons (map unparse-exp exp1) (map unparse-exp exp2)))]
       [lc-indef (exp1 exp2) (cons 'lambda (cons (unparse-exp exp1) (map unparse-exp exp2)))]
-      [lc-ref (exp1 exp2) (cons 'lambda (cons (unparse-exp exp1) (map unparse-exp exp2)))]
       [let-basic (ids body) (unparse-let exp)]
       [let-star (ids body) (unparse-let exp)]
       [let-named (name ids body) (unparse-let exp)]
@@ -383,8 +374,6 @@
                (lc-mult args (map syntax-expand body))]
       [lc-indef (arg body)
                 (lc-mult (list arg) (map syntax-expand body))]
-      [lc-ref (args body)
-              (lc-ref args (map syntax-expand body))]
       [while-exp (test body)
                  (while-exp (syntax-expand test) (map syntax-expand body))]
       [app-exp (rator rands)
@@ -490,7 +479,6 @@
   (lambda (exp env)
     (cases expression exp
       [lc-mult (args body) (closure args body env)]
-      [lc-ref (args body) (closure-ref args body env)]
       [lc-indef (arg body) (closure (list arg) body env)]
       [if-else
        (cond if-true else)
@@ -545,12 +533,7 @@
   (lambda (proc-value arg-vals)
     (cases proc-val proc-value
       [prim-proc (op) (apply-prim-proc op arg-vals)]
-      [closure (args code env)
-               ;(print args)
-               (apply-closure code (extend-env (map unparse-exp args) arg-vals env))]
-      [closure-ref (args code env)
-                   ;(print args)
-                   (apply-closure code (extend-env-helper (map (lambda (x) (if (list? x) (unparse-exp (2nd x)) (unparse-exp x))) args) arg-vals env))]
+      [closure (args code env) (apply-closure args arg-vals code (extend-env (map unparse-exp args) arg-vals env))]
       [else (error 'apply-proc
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
@@ -642,17 +625,9 @@
                    prim-proc)])))
 
 (define apply-closure
-  (lambda (code env)
-    ;(with-handlers ((exn:fail? (lambda (exn) (car (reverse (map (lambda (a) (eval-exp a env)) code))))))
-    (if (null? (cdr code))
-        (eval-exp (car code) env)
-        (begin (eval-exp (car code) env) (apply-closure (cdr code) env)))))
-    ;    (eval-exp (car code) env)
-    ;    (eval-exp (car code) env (closure-ref (cdr code) env))))))
-        
-    ;(car (reverse (map (lambda (a) (eval-exp a env k)) code)))))
-    ;(let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
-    ;  (car (reverse (map (lambda (a) (eval-exp a new-env k)) code))))))
+  (lambda (args vals code env)
+    (let ([new-env (extend-env-helper (map unparse-exp args) vals env)])
+      (car (reverse (map (lambda (a) (eval-exp a new-env)) code))))))
 
 (define extend-env-helper
   (lambda (args vals env)
@@ -721,10 +696,3 @@
   (lambda (parsed-test)
     (eval-exp (syntax-expand parsed-test) init-env)))
 
-(define s/e
-  (lambda (a)
-    (syntax-expand (parse-exp a))))
-(define e eval-one-exp)
-(define u
-  (lambda (a)
-    (unparse-exp (syntax-expand (parse-exp a)))))
