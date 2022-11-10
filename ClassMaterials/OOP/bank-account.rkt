@@ -2,14 +2,7 @@
 
 (define make-bank-account
   (lambda (starting-balance)
-    (let [(balance starting-balance)]
-      (lambda (a . arg)
-        (cond ;[(not (list? a)) (set! balance a)]
-              ;[(null? (cdr a)) (set! balance (car a))]
-              [(equal? 'balance a) balance]
-              [(equal? 'deposit a) (set! balance (+ (car arg) balance))]
-              [else (set! balance (- balance (car arg)))])
-      ))))
+    'nyi)) 
 
 ; hint, you might find the lambda form with required
 ; and optional args useful here

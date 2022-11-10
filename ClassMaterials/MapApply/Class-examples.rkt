@@ -2,20 +2,19 @@
 
 ; firsts 
 
-;(define firsts
-;  (lambda (lol)
-;    (if (null? lol) '() (cons (caar lol) (firsts (cdr lol))))))
+(define firsts
+  (lambda (lol)
+    '() ;; NYI
+))
 
 ; Map unary
 
 (define map-unary
   (lambda (func list)
-    (if (null? list) '() (cons (func (car list)) (map-unary func (cdr list))))))
+    '() ;; NYI
+  ))
 
 ;; use map-unary to simplify firsts
-(define firsts
-  (lambda (lol)
-    (map-unary car lol)))
 
 ;; The real map is even better because it can handle any number of arguments
 (map + '(1 2 3) '(10 100 1000))
@@ -30,15 +29,17 @@
 ;; note these are lists, not scheme "pairs"
 (define sum-pairs
   (lambda (pairlist)
-    (map (lambda (pair) (+ (car pair) (cadr pair))) pairlist)))
+    '() ;; NYI
+  ))
 
 (sum-pairs '((1 2) (3 4))) ;; should yield (3 7)
 
 ;; take a list of numbers, and halve all the even ones
 ;; note that in scheme the % operator is called modulo
 (define halve-evens
-  (lambda (lon)
-    (map (lambda (num) (if (even? num) (/ num 2) num)) lon))) 
+  (lambda (pairlist)
+    '() ;; NYI
+  ))
 
 (halve-evens '(1 2 3 40 60)) ;; should yield (1 1 3 20 30)
 
@@ -50,19 +51,19 @@
 ;; divisible by a given value
 (define remove-divisible-by 
   (lambda (num list)
-    (filter (lambda (testnum) (not (zero? (modulo testnum num)))) list)))
+    '() ;; NYI
+  ))
 
 (remove-divisible-by 3 '(1 2 3 4 5 6)) ;; should yield (1 2 4 5)
 
 ;; there is also ones called andmap and ormap (not standard scheme)
 
 (define all-positive?
-
   (lambda (lon)
     (andmap (lambda (num) (> num 0)) lon)))
 
 (all-positive? '(1 2 3)) ;; yields #t
-(all-positive? '(1 2 3)) ;; yields #f
+(all-positive? '(1 2 -3)) ;; yields #f
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -100,8 +101,7 @@
 
 (define make-list-cleaner
   (lambda (value-to-clean)
-    (lambda (lst)
-      (filter (lambda (x) (not (equal? x value-to-clean))) lst))))
+    'nyi))
 
 (define remove-zeros (make-list-cleaner 0))
 (define remove-qs (make-list-cleaner 'q))
@@ -123,14 +123,8 @@
 
 (define make-limited
   (lambda (proc)
-    (lambda params
-      (if (< (length params) 4)
-          (apply proc params)
-          'unreasonable))))
+    'nyi))
       
-
-
-
 
 
 
