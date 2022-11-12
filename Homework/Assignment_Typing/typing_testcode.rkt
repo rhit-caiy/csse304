@@ -33,7 +33,7 @@
     [(expect-error '((lambda (num -> num) (x) 1) (lambda num (y) x))) 'unbound-var 2]
     [(typecheck 'zero?) '(num -> bool) 2]
     [(typecheck '-) '(num -> (num -> num)) 2]
-    [(typecheck '((- 10) 3)) 'num 2]
+    [(typecheck '((- 10) 3)) 'num 2];11
     [(expect-error '(1 1)) 'bad-procedure 2]
     [(expect-error '(lambda bool (f) (f 1))) 'bad-procedure 2]
     [(typecheck '((lambda num (n) ((- n) 1)) 9)) 'num 2]

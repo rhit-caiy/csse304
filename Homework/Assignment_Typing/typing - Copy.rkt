@@ -93,35 +93,53 @@
 
 (define getenv
   (lambda (env a)
-    (cond [(null? env) (print a) (raise 'unbound-var)]
+    (cond [(null? env) (raise 'unbound-var)]
           [(equal? (caar env) a) (cadar env)]
           [else (getenv (cdr env) a)])))
 
 (define typecheck-exp
   (lambda (exp env)
+    ;(print exp)
+    ;(print env)
     (cases expression exp
       [lit-exp (value) (if (number? value) (number-t) (boolean-t))]
       ; lots more expression types goe here
       [var-exp (name) (cond [(equal? name 'zero?) (proc-t (number-t) (boolean-t))]
                             [(equal? name '-) (proc-t (number-t) (proc-t (number-t) (number-t)))]
                             [else (getenv env name)])]
+                            ;[else (number-t)])](print (list (unparse-type (typecheck-exp then-exp env)) (unparse-type (typecheck-exp else-exp env))))
       [if-exp (test-exp then-exp else-exp) (cond [(not (equal? 'bool (unparse-type (typecheck-exp test-exp env)))) (raise 'bad-if-test)]
                                                  [(not (equal? (unparse-type (typecheck-exp then-exp env)) (unparse-type (typecheck-exp else-exp env)))) (raise 'bad-if-branches)]
                                                  [else (typecheck-exp then-exp env)])]
       [lam-exp (var ptype body) (proc-t ptype (typecheck-exp body (cons (list var ptype) env)))]
-      [letrec-exp (recurse-var ret-type lambda body)
-                  (if (equal? (car ret-type) (car (reverse (flatten (typecheck-exp lambda (cons (list recurse-var (proc-t (caddr lambda) ret-type)) env))))))
-                      (typecheck-exp body (cons (list recurse-var (proc-t (caddr lambda) ret-type)) env))
-                      (raise 'bad-letrec-types))]
-      [app-exp (rator rand)
-               (if (= 1 (length (typecheck-exp rator env)))
-                           (raise 'bad-procedure)
-                           (if (equal? (typecheck-exp rand env) (cadr (typecheck-exp rator env)))
-                               (caddr (typecheck-exp rator env))
-                               (raise 'bad-parameter)))]
+      [letrec-exp (recurse-var ret-type lambda body); (print ret-type) (print (typecheck-exp body (cons (list recurse-var ret-type) env)))
+                  (typecheck-exp lambda (cons (list recurse-var ret-type) env))
+                  (typecheck-exp body (cons (list recurse-var ret-type) env))]
+                  ;(if (equal? ret-type (typecheck-exp body (cons (list recurse-var (getenv env (typecheck-exp recurse-var env))) env)))
+                  ;                                       (typecheck-exp body (cons (list recurse-var ret-type) env))
+                  ;                                       (raise 'bad-letrec-types))];(proc-t (ret-type)
+      [app-exp (rator rand) (print (car (typecheck-exp rand env))) (print (car (flatten (list (car (typecheck-exp rator env)))))) (print '------------)
+               (cond ;[(equal? 'num (unparse-type (typecheck-exp rator env))) (raise 'bad-procedure)]
+                 [(equal? rator (parse '-)) (if (or (equal? 'lit-exp (car (typecheck-exp rand env))) (equal? 'number-t (car (typecheck-exp rand env))))
+                                                (proc-t (number-t) (number-t))
+                                                (raise 'bad-parameter))]
+                 
+                 [(equal? 'lit-exp (car rator)) (raise 'bad-procedure)]
+                 ;[(equal? 'lam-exp (car rator)) ;(if (equal? (car (typecheck-exp rand env)) (car (flatten (list (car (typecheck-exp rator env))))))
+                 ;                                   (typecheck-exp rator env)]
+                                                ;    (raise 'bad-parameter))]
+                 [(and (equal? 'app-exp (car rator)) (list? (car rator)) (equal? '- (cadar rator)) (not (equal? 'number-t (car (typecheck-exp rand env))))) (raise 'bad-procedure)]
+                 ;[(and (not (null? (flatten (list (car (typecheck-exp rator env))))))
+                 ;      (not (equal? (car (typecheck-exp rand env)) (car (flatten (list (car (typecheck-exp rator env))))))))
+                 ; (raise 'bad-parameter)]
+                 [else (typecheck-exp rator env) (if (equal? 'var-exp (car rator))
+                                                     (if (equal? 'lit-exp (car (getenv env (cadr rator))))
+                                                         #t
+                                                         (raise 'bad-procedure))
+                                                     #t)
+                       (typecheck-exp rand env)])]
+                       ;(if (typecheck-exp rator env)
+                       ;    (proc-t (typecheck-exp rand (cons (list rator (typecheck-exp rator env)) env)) (typecheck-exp rator env))
+                       ;    (typecheck-exp rand env))])]
       ; of course when you're finished this else should never happen
       [else 'unknown-expression] )))
-(define expect-error
-  (lambda (code)
-    (with-handlers ([symbol? (lambda (x) x)])
-      (typecheck code))))
