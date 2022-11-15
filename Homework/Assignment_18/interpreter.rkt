@@ -149,7 +149,7 @@
           [(pair? datum)
            (cond
              [(eqv? (car datum) 'quote) (lit-exp (cadr datum))]
-             [(eqv? (car datum) 'if)
+             [(or (eqv? (car datum) 'if) (eqv? (car datum) 'when))
               (if (not (or (= (length datum) 3) (= (length datum) 4)))
                   (error 'parse-error "error")
                   (parse-if datum))]
@@ -622,7 +622,7 @@
                    "Attempt to apply bad procedure: ~s" 
                    proc-value)])))
 
-(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print void call/cc exit-list))
+(define *prim-proc-names* '(map apply procedure? + - * / quotient positive? negative? add1 sub1 cons not eqv? = >= <= > < cons car cdr caar cadr cdar cddr caaar caadr cadar caddr cdaar cdadr cddar cdddr list null? eq? equal? atom? assq length list->vector make-vector vector-ref vector-set! list? pair? vector->list vector? number? zero? symbol? display newline vector append list-tail print void call/cc exit-list return))
 
 (define init-env         ; for now, our initial global environment only contains 
   (extend-env            ; procedure names.  Recall that an environment associates
@@ -706,6 +706,7 @@
       [(void) (apply-k k (void))]
       [(call/cc) (apply-proc (1st args) (list (k-proc k)) k)]
       [(exit-list) args]
+      [(return) (1st args)]
       [else (error 'apply-prim-proc 
                    "Bad primitive procedure name: ~s" 
                    prim-proc)])))
